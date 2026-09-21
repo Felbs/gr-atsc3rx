@@ -84,3 +84,18 @@ Not done: gate 2; any C++; Linux build/CI; live CTI/LDM; soaks longer than 75 s;
 - `tv_bridge` no longer orphans the viewer's player. Report fixes: crash-zeroed file tails, event matching.
 - Picture-shape question from the owner: checked on the OUTPUT - 1280x720, SAR 1:1, player video area exactly
   that; the window only looks squarer because of the player's own menu and control bars.
+
+## 2026-09-21 — session 7: the ce_w bug fixed at its source; one clean hour
+- Owner asked for the fix in the reference receiver. Root cause (corrects session 6's "echo" reading): the E60
+  complex-gain normalisation fits symbols onto the frame-MEAN of raw pilots; a residual CFO (~10 deg/symbol
+  measured, ~350 deg/frame) collapses that mean, differently on the two pilot parities -> alternate symbols
+  scaled x0.77/x1.30 -> 0/74 with perfect dummy cells. Fix there: de-rotate each symbol's common phase (measured
+  over the whole grid) before the mean. Its gates all pass with unchanged SHAs; new phase-ramp leg with the old
+  build as negative control. On the 150 s stretch its CPU mode went 79.5 % / 14 re-acquisitions -> 44912/44918 / 0;
+  this chain 44912/44918 with 0 retries. Both bit-exact gates still pass.
+- Stress run 2, full hour, reference on its CPU path: 1077217/1077218 vs 1077440/1077440, 0 re-acquisitions
+  both, all 1,269,178 of our datagrams byte-identical. The PC stayed up this time.
+- `stress_ab.py --ref-args`, retry counters in the status records.
+- Control on the same hour of samples, reference OLD build (ATSC3_CE_DEROT=0): 966155/1052798 = 91.8 %, 139
+  re-acquisitions, ~86,600 blocks lost in minutes 3-12. Fixed build: 0 lost, 0 re-acquisitions. The condition did
+  occur in that hour; the fix is what made it invisible.

@@ -73,9 +73,10 @@ content key.
 3. **Live air.** 100.00 % of FEC blocks BCH-clean over 45 s from the command line; 99.98 - 100 %
    over 50 - 75 s from the GRC flowgraph. One radio, one multiplex, short runs: see the report.
 4. **Same-samples stress test** (`util/stress_ab.py`): the radio's samples are quantised once and fed to this
-   chain and to the reference receiver. 42 minutes: 99.36 % of FEC blocks here, 99.68 % there, 99.5 % of the
-   reference's 882,920 datagrams reproduced byte for byte; the one loss that was this side's alone was traced
-   to the reference's own CPU fast path and is now caught by a retry. See the report.
+   chain and to the reference receiver, live, side by side. One hour: 1,077,217 of 1,077,218 FEC blocks here,
+   1,077,440 of 1,077,440 there, no re-acquisition on either side, and **every one of this chain's 1,269,178
+   datagrams byte-identical** to the reference's. The first run of this test is how a latent bug in the
+   reference receiver's CPU path was found (and then fixed at its source): see the report.
 5. **QA** with a fake reference receiver, so CI needs no receiver, capture or radio: 22 tests.
 
 No captured broadcast content is, or ever will be, in this repository: test signals come from

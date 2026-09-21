@@ -56,8 +56,9 @@ with the reference receiver: `python -m atsc3 watch --capture F --rate 6.912e6 -
 - A finite stock source ENDS the flowgraph under message blocks: tests use Capture Source.
 
 ## Traps found in sessions 5-6
-- The reference receiver's CPU FAST decoder smooths the channel estimate (E60 `ce_w`); on a long echo that turns
-  74/74 into 0/74 at a healthy SNR. `frame_decoder(rescue=True)` retries such frames with `margin={"ce_w": 0}`.
+- FIXED UPSTREAM 9/21 (reference receiver branch fix/ce-norm-derotate): its E60 CE normalisation averaged RAW
+  pilots; a residual CFO (~350 deg/frame) collapsed the mean -> 0/74 at a healthy SNR. (Not an echo, as first thought.)
+  A reference checkout WITHOUT that fix still has the bug: the rescue below is what protects this chain from it. `frame_decoder(rescue=True)` retries such frames with `margin={"ce_w": 0}`.
   Local repro + notes: runs/fastpath_bug/ (NOT in git). The reference's GPU and exact-CPU paths are unaffected,
   so an oracle made on a GPU box can legitimately beat this chain until that is fixed upstream.
 - A continuity break must discard the whole queue, or the slow re-acquisition overflows it again, forever.

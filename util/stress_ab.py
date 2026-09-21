@@ -78,6 +78,7 @@ def main():
     ap.add_argument("--procs", type=int, default=4)
     ap.add_argument("--every", type=float, default=10.0)
     ap.add_argument("--keep-iq", action="store_true")
+    ap.add_argument("--ref-args", default="", help='extra arguments for the reference receiver, e.g. "--accel cpu"')
     a = ap.parse_args()
     out = os.path.abspath(a.out)
     os.makedirs(out, exist_ok=True)
@@ -143,13 +144,15 @@ def main():
                 ref = subprocess.Popen(
                     [a.reference_python, "-u", "-m", "atsc3", "watch", "--capture", iq, "--fmt", "cs16",
                      "--rate", str(a.rate), "--realtime", "--player", "none", "--report", str(a.every),
-                     "--dump-dg", os.path.join(out, "ref.dg"), "--json", os.path.join(out, "ref.json")],
+                     "--dump-dg", os.path.join(out, "ref.dg"), "--json", os.path.join(out, "ref.json")]
+                    + a.ref_args.split(),
                     cwd=a.receiver, stderr=subprocess.STDOUT, stdout=open(os.path.join(out, "ref.log"), "ab"))
             if now >= nxt:
                 nxt += a.every
                 rec = {"t": round(now - t0, 1), "wall": round(now, 1), "frames": dec.n_frames, "fec": dec.n_fec,
                        "bch": dec.n_bch, "conv": dec.n_conv, "reacq": sync.n_reacquire, "breaks": sync.n_breaks,
-                       "dropped": sync.n_dropped, "snr": snr.last, "snr_min": snr.take_min(),
+                       "dropped": sync.n_dropped, "retried": dec.n_retried, "rescued": dec.n_rescued,
+                       "snr": snr.last, "snr_min": snr.take_min(),
                        "datagrams": alp.n_datagrams, "iq_gb": round(os.path.getsize(iq) / 1e9, 2),
                        "ref_alive": ref is not None and ref.poll() is None}
                 log.write(json.dumps(rec) + "\n")
@@ -171,7 +174,7 @@ def main():
             ref_rc = "terminated after 300 s"
     done = {"why": why, "wall_s": round(wall, 1), "ours": {"frames": dec.n_frames, "fec": dec.n_fec, "bch": dec.n_bch,
             "reacquisitions": sync.n_reacquire, "continuity_breaks": sync.n_breaks, "frames_dropped": sync.n_dropped,
-            "datagrams": alp.n_datagrams, "dg_sha256": sha}, "ref_rc": ref_rc,
+            "retried": dec.n_retried, "rescued": dec.n_rescued, "datagrams": alp.n_datagrams, "dg_sha256": sha}, "ref_rc": ref_rc,
             "iq_bytes": os.path.getsize(iq) if os.path.exists(iq) else 0}
     if not a.keep_iq:
         for _ in range(30):
