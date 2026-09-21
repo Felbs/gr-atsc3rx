@@ -38,6 +38,17 @@ def load(receiver_dir=None, quiet=True):
         # importing the receiver's fast path would otherwise import torch into the
         # flowgraph process; the GPU stays optional and is never loaded by default
         os.environ.setdefault("M9_NO_TORCH", "1")
+        # One BLAS thread. The receiver fans out with its own threads and processes; a BLAS
+        # pool underneath a loop of small matrix products is a throttle, not parallelism
+        # (measured here: 32 MKL threads made the LDM decoder 4x slower). The environment
+        # covers worker processes; threadpoolctl covers this one, where NumPy is already up.
+        for v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+            os.environ.setdefault(v, "1")
+        try:
+            import threadpoolctl
+            _cache["_blas_limit"] = threadpoolctl.threadpool_limits(limits=1)
+        except Exception:                       # not installed: the environment variables still help children
+            pass
         if lab not in sys.path:
             sys.path.insert(0, lab)
 
@@ -55,3 +66,41 @@ def load(receiver_dir=None, quiet=True):
             ns.ST.log = lambda *a, **k: ns.lines.append(" ".join(str(x) for x in a))
         _cache[lab] = ns
         return ns
+
+
+# ---- frame windows by reference ------------------------------------------------------
+# A frame window is ~1.7 M complex128 samples. Serialising that into a PMT vector and back
+# costs ~0.4 s in Python - more than the frame lasts. Inside one process the window can stay
+# where it is: the PDU carries a key, the consumer collects the array. `inline=True` on Frame
+# Sync puts the samples in the PDU instead (another process, a file, a debugger). This is a
+# Python-phase device; in C++ the hand-off is a tagged stream and costs nothing.
+_windows = {}
+_win_cv = threading.Condition()
+_win_next = [1]
+WINDOW_CAP = 8                       # ~27 MB each
+
+
+def park_window(w, drop=False, timeout=120.0):
+    """Park a frame window; returns its key, or None if it was dropped.
+
+    Behind a slow decoder there are two honest things to do. A FILE waits (drop=False):
+    every frame matters and nothing is lost by waiting. A RADIO cannot wait - the samples
+    keep coming - so it drops this WHOLE frame (drop=True) rather than let the backlog grow
+    or lose samples mid-frame. Holes cost a convolutional interleaver dearly, so the caller
+    counts them."""
+    with _win_cv:
+        if len(_windows) >= WINDOW_CAP:
+            if drop:
+                return None
+            _win_cv.wait_for(lambda: len(_windows) < WINDOW_CAP, timeout)
+        key = _win_next[0]
+        _win_next[0] += 1
+        _windows[key] = w
+        return key
+
+
+def claim_window(key):
+    with _win_cv:
+        w = _windows.pop(key, None)
+        _win_cv.notify_all()
+        return w

@@ -5,14 +5,17 @@ flags: [python]
 documentation: |-
   One frame of samples in; baseband payload out. OFDM demod, channel estimation,
   de-interleaving, soft demapping, LDPC, BCH, descrambling.
+  Worker processes: multiplexes that use the convolutional interleaver (incl. LDM) demodulate
+  frames in this many processes; 0 stays in this one. About 4 is needed for real time.
   'dial' = SNR off the frame's known dummy cells (continuous below the decode cliff);
   'liveness' = running count of BCH-clean FEC blocks. Both plug straight into gr-rxtune.
 templates:
   imports: from gnuradio import atsc3rx
-  make: atsc3rx.frame_decoder(receiver_dir=${receiver_dir}, threads=${threads}, iters=${iters})
+  make: atsc3rx.frame_decoder(receiver_dir=${receiver_dir}, threads=${threads}, iters=${iters}, procs=${procs})
 parameters:
 - {id: receiver_dir, label: Receiver dir, dtype: string, default: ''}
 - {id: threads, label: Threads, dtype: int, default: '8'}
+- {id: procs, label: Worker processes (CTI/LDM), dtype: int, default: '0'}
 - {id: iters, label: LDPC iterations, dtype: int, default: '50', hide: part}
 inputs:
 - {domain: message, id: frames}

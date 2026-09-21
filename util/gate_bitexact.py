@@ -47,12 +47,14 @@ def main():
     ap.add_argument("--rate", type=float, default=6.912e6)
     ap.add_argument("--out", default=os.path.join(tempfile.gettempdir(), "gr_atsc3rx_gate.dg"))
     ap.add_argument("--timeout", type=float, default=900.0)
+    ap.add_argument("--threads", type=int, default=8)
+    ap.add_argument("--procs", type=int, default=0, help="LDM path: demodulate frames in N worker processes")
     a = ap.parse_args()
 
     tb = gr.top_block()
     src = atsc3rx.capture_source(a.capture)
     sync = atsc3rx.frame_sync(a.rate, a.receiver)
-    dec = atsc3rx.frame_decoder(a.receiver)
+    dec = atsc3rx.frame_decoder(a.receiver, threads=a.threads, procs=a.procs)
     alp = atsc3rx.alp_decap(a.receiver)
     sink = atsc3rx.dg_sink(a.out)
     tb.connect(src, sync)
@@ -69,9 +71,16 @@ def main():
         last = state
         if src.eof and still >= 6:                 # nothing has moved for 6 s after end of file
             break
+    # messages are asynchronous: flush a stage only once it has received everything the
+    # stage before it published, or the tail of the capture is flushed past, not through
+    def settle(done, limit=60.0):
+        t = time.time()
+        while not done() and time.time() - t < limit:
+            time.sleep(0.1)
     dec.flush()
+    settle(lambda: alp.n_bb >= dec.n_frames)
     alp.flush()
-    time.sleep(1.0)
+    settle(lambda: sink.n >= alp.n_datagrams)
     tb.stop()
     tb.wait()
     sha = sink.close()
@@ -80,6 +89,9 @@ def main():
     print(f"plan   : {sync.mode} path; " + (sync.plan.describe().splitlines()[0] if sync.plan else "no plan"))
     print(f"frames : {sync.n_frames} cut, {dec.n_frames} decoded;  FEC {dec.n_conv}/{dec.n_fec} converged, "
           f"{dec.n_bch} BCH-clean;  {wall:.0f} s wall")
+    air = sync.n_frames * (sync.plan.frame_samples / 6.912e6 if sync.plan else 0)
+    print(f"time   : {air:.1f} s of air;  frame sync busy {sync.t_busy - sync.t_wait:.1f} s (+{sync.t_wait:.1f} s waiting), frame decoder busy {dec.t_busy:.1f} s"
+          f"  -> {air / max(wall - 7, 1e-9):.2f}x real time end to end")
     ours, theirs = read_dg(a.out), read_dg(a.oracle)
     sha_o = hashlib.sha256(open(a.oracle, "rb").read()).hexdigest()
     print(f"ours   : {len(ours)} datagrams  sha256 {sha[:16]}...")

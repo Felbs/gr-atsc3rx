@@ -8,14 +8,17 @@ documentation: |-
   timing, and cuts one window of samples per frame. The plan travels with every frame.
   'plan' is published once per acquisition: connect a Message Debug to see what a
   carrier is transmitting. Any input rate; 6.912 MS/s avoids the resampler.
+  With a radio, choose 'Drop whole frames': a file can wait for a slow decoder, the air cannot.
   Python phase: needs the reference receiver (Receiver dir, or ATSC3_RECEIVER_DIR).
 templates:
   imports: from gnuradio import atsc3rx
-  make: atsc3rx.frame_sync(samp_rate=${samp_rate}, receiver_dir=${receiver_dir}, fe_threads=${fe_threads})
+  make: atsc3rx.frame_sync(samp_rate=${samp_rate}, receiver_dir=${receiver_dir}, fe_threads=${fe_threads}, inline=${inline}, drop_when_behind=${drop_when_behind})
 parameters:
 - {id: samp_rate, label: Sample rate, dtype: real, default: '6.912e6'}
 - {id: receiver_dir, label: Receiver dir, dtype: string, default: ''}
-- {id: fe_threads, label: Front-end threads, dtype: int, default: '4', hide: part}
+- {id: fe_threads, label: Front-end threads, dtype: int, default: '8', hide: part}
+- {id: drop_when_behind, label: If the decoder is behind, dtype: enum, default: 'False', options: ['False', 'True'], option_labels: ['Wait (file)', 'Drop whole frames (radio)']}
+- {id: inline, label: Frame samples, dtype: enum, default: 'False', options: ['False', 'True'], option_labels: ['By reference (same process)', 'Inside the PDU (slow)'], hide: part}
 inputs:
 - {domain: stream, dtype: complex}
 outputs:

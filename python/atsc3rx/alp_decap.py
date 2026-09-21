@@ -31,6 +31,7 @@ class alp_decap(gr.basic_block):
         self.walker = self.rx.ST.StreamAlpWalker()
         self.ip = self.rx.R7.IpReasm()
         self.n_datagrams = 0
+        self.n_bb = 0
         self.other_types = 0
         self.message_port_register_in(pmt.intern("bb"))
         self.set_msg_handler(pmt.intern("bb"), self.on_bb)
@@ -55,6 +56,7 @@ class alp_decap(gr.basic_block):
         meta = pmt.to_python(pmt.car(msg))
         stream = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
         self._emit(self.walker.feed(stream, list(meta.get("bounds", []))))
+        self.n_bb += 1
 
     def flush(self):
         self._emit(self.walker.pump(final=True))

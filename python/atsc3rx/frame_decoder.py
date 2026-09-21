@@ -19,6 +19,7 @@ Python phase: the reference receiver's decoders, unchanged. Hybrid-interleaver
 multiplexes use its fast frame decoder; convolutional-interleaver (incl. LDM) ones use
 its LDM pipeline. In C++ this block splits into the stages listed in docs/DESIGN.md."""
 import json
+import time
 import threading
 
 import numpy as np
@@ -37,15 +38,17 @@ class frame_decoder(gr.basic_block):
          message 'liveness' cumulative BCH-clean FEC blocks
     """
 
-    def __init__(self, receiver_dir="", threads=8, iters=50, cpu_fast=True):
+    def __init__(self, receiver_dir="", threads=8, iters=50, cpu_fast=True, procs=0, proc_threads=4):
         gr.basic_block.__init__(self, name="atsc3rx_frame_decoder", in_sig=None, out_sig=None)
         self.rx = _core.load(receiver_dir or None)
         self.threads, self.iters, self.cpu_fast = int(threads), int(iters), bool(cpu_fast)
+        self.procs, self.proc_threads = int(procs), int(proc_threads)   # LDM path: demodulate in worker processes
         self.dec = None
         self.mode = None
         self.bb_abs = 0
         self.n_frames = self.n_conv = self.n_bch = self.n_fec = 0
         self._lock = threading.Lock()
+        self.t_busy = 0.0
         self.message_port_register_in(pmt.intern("frames"))
         self.set_msg_handler(pmt.intern("frames"), self.on_frame)
         for p in ("bb", "quality", "dial", "liveness"):
@@ -56,7 +59,7 @@ class frame_decoder(gr.basic_block):
         plan = rx.M44.LdmPlan.from_spec(json.loads(plan_json)) if plan_json else None
         if mode == "ldm":
             self.dec = rx.M44.LdmPipeline(plan=plan, iters=self.iters, threads=self.threads, accel="cpu",
-                                          log=rx.ST.log, procs=0)      # procs=0: stay in this process
+                                          log=rx.ST.log, procs=self.procs, proc_threads=self.proc_threads)
             self.dec.adopt(plan)
         else:
             self.dec = rx.m9_fast.FrameDecoder(threads=self.threads, backend="cpu", iters=self.iters,
@@ -66,7 +69,12 @@ class frame_decoder(gr.basic_block):
 
     def on_frame(self, msg):
         meta = pmt.to_python(pmt.car(msg))
-        w = np.asarray(pmt.to_python(pmt.cdr(msg)), dtype=np.complex128)
+        w = _core.claim_window(meta["win"]) if "win" in meta else None
+        if w is None:
+            if pmt.length(pmt.cdr(msg)) == 0:
+                return                                  # by-reference frame from another process, or already claimed
+            w = np.asarray(pmt.c64vector_elements(pmt.cdr(msg)), dtype=np.complex128)
+        tw = time.perf_counter()
         with self._lock:
             if self.dec is None:
                 self._build(meta["mode"], meta.get("plan", ""))
@@ -74,6 +82,7 @@ class frame_decoder(gr.basic_block):
                 self._ldm(meta, w)
             else:
                 self._m9(meta, w)
+        self.t_busy += time.perf_counter() - tw
 
     def _m9(self, meta, w):
         rx = self.rx
@@ -125,8 +134,12 @@ class frame_decoder(gr.basic_block):
         """End of input: the LDM pipeline holds interleaver state."""
         with self._lock:
             if self.mode == "ldm" and self.dec is not None:
+                before = (self.dec.n_conv, self.dec.n_bch, self.dec.n_blocks)
                 for stream, bounds in self.dec.flush():
-                    self._publish({"index": -1}, bytes(stream), list(bounds), 0, 0, 0, None, None)
+                    conv, bch, blocks = self.dec.n_conv, self.dec.n_bch, self.dec.n_blocks
+                    self._publish({"index": -1}, bytes(stream), list(bounds), conv - before[0], bch - before[1],
+                                  blocks - before[2], None, None)
+                    before = (conv, bch, blocks)
 
     def stop(self):
         try:
