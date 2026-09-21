@@ -2,20 +2,30 @@
 
 An ATSC 3.0 physical-layer RECEIVER for GNU Radio, ported stage by stage from an existing
 working receiver (a separate project, not modified by this work).
-State: **Python phase working end to end; GATE 1 PASSES.** Owner's decisions (2026-09-21):
+State: **Python phase working end to end on captures AND live air; GATE 1 PASSES byte-identical on
+both decode paths; 21 QA tests; GRC examples + screenshots.** Owner's decisions (2026-09-21):
 name gr-atsc3rx, GPL-3.0-or-later, DEPEND on the reference receiver during the Python phases,
 no outside contact yet.
 
 ## Read first
-README.md -> docs/DESIGN.md (scope, tagged-stream/PDU decision, block list, three gates, phases)
+README.md -> docs/TEST_REPORT.md (what was and was NOT run) -> docs/DESIGN.md (scope, tagged-stream/PDU decision, block list, three gates, phases)
 -> docs/PRIOR_ART.md -> BUILD_LOG.md.
 
 ## Run it
 ```
 set ATSC3_RECEIVER_DIR=<reference receiver root, the dir containing lab/>
 python apps/atsc3_identify.py --capture captures/ref_a.cs16
-python util/gate_bitexact.py captures/ref_a.cs16 --oracle captures/ref_a.oracle.dg
+python util/gate_bitexact.py captures/ref_a.cs16 --oracle captures/ref_a.oracle.dg --threads 16
+python util/gate_bitexact.py captures/ref_b.cs16 --oracle captures/ref_b.oracle.dg --threads 16 --procs 4
+python apps/atsc3_rx.py --soapy driver=sdrplay --freq <Hz> --antenna "<port>" --gain RFGR=<n> IFGR=<n> --seconds 45 --udp
+python -X faulthandler python/atsc3rx/qa_<name>.py        (5 files, 21 tests, no receiver needed)
+python util/make_grc.py ; grcc -o build/grc examples/*.grc ; python util/grc_screenshot.py X.grc X.png
+python util/run_qt_shot.py build/grc/rx_radio_qt.py --set freq=.. --set "antenna=.." --set show_plan=0 \
+       --call "src.set_gain(0,'IFGR',<n>)" --png out.png
 ```
+ref_a = hybrid-interleaver multiplex (12 s), ref_b = convolutional-interleaver/LDM multiplex (25 s slice of a
+banked capture). Shared radio: set RXTUNE_LOCK to the site lock module and put gr-rxtune's src/ on PYTHONPATH.
+grc_screenshot needs radioconda's Library/bin on PATH (GTK DLLs).
 Use a GNU Radio 3.10 Python. `captures/` is git-ignored and must stay that way. Make an oracle
 with the reference receiver: `python -m atsc3 watch --capture F --rate 6.912e6 --player none --dump-dg F.dg`.
 
@@ -34,9 +44,22 @@ with the reference receiver: `python -m atsc3 watch --capture F --rate 6.912e6 -
 - The reference decoder's per-frame `diag["dummy"]` is a dict, not a number.
 - The Python gateway finds message handlers by NAME: no lambdas.
 
+## Traps found in session 3
+- A ~1.7 M-sample frame window costs 0.46 s through a PMT vector. Windows go BY REFERENCE in-process
+  (`_core.park_window/claim_window`); a file WAITS when 8 are unclaimed, a radio DROPS whole frames and counts.
+- MKL defaults to 32 threads here and throttles the decoder 4x: `_core.load()` pins BLAS to 1.
+- Never do acquisition inside `work()`: the radio overflows. Frame Sync's `work()` only queues.
+- Messages are asynchronous: flush stage N+1 only after it has RECEIVED everything stage N published.
+- An RSPdx needs ~2 s after stream start before its samples are worth locking to (`settle_sec`).
+- GRC enum params given an expression silently fall back to the default: use dtype bool.
+- A Python block must be kept referenced while its flowgraph runs (access violation otherwise).
+- A finite stock source ENDS the flowgraph under message blocks: tests use Capture Source.
+
 ## Next
 1. Gate 2 on the Ubuntu rig: build drmpeg/gr-atsc3, File-Sink its V&V flowgraphs at 6.912 MS/s, decode them.
-2. A convolutional-interleaver / LDM capture through the `ldm` path (coded, not yet exercised).
-3. Live: Soapy source -> chain -> UDP sink -> the reference receiver's transport + player.
-4. First C++ stage: `frame_sync` front end (the hot path), then demapper, LDPC, de-interleavers.
-5. QA files + CI; GRC example flowgraph + screenshots; rxtune recipe using the `dial`/`liveness` ports.
+2. First C++ stage. The profile says where: the CTI/LDM path is 0.64x here vs 1.8x in the reference, all of
+   it single-Python-process overhead; the front end (resample, de-rotate, notch) is the natural first port.
+3. Linux build + CI running the 21 QA tests (they need no receiver).
+4. Live CTI/LDM multiplex (needs the speed from 2); longer live soaks; a second radio type.
+5. gr-rxtune example using this chain's `dial` + `liveness` ports directly (no capture-per-cell).
+6. Feed the UDP output to the reference receiver's transport + player (TV through GNU Radio, natively).

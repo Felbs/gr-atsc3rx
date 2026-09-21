@@ -1,0 +1,332 @@
+options:
+  parameters:
+    id: rx_radio_qt
+    title: 'ATSC 3.0 receiver: radio to IP datagrams'
+    author: gr-atsc3rx
+    generate_options: qt_gui
+    output_language: python
+    category: '[GRC Hier Blocks]'
+    run: 'True'
+    run_options: prompt
+    gen_cmake: 'On'
+    description: A SoapySDR radio through the receiver, with the status panel.
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 8
+    rotation: 0
+    state: enabled
+blocks:
+- name: samp_rate
+  id: variable
+  parameters:
+    value: 6.912e6
+    comment: 'ATSC 3.0''s own rate: no resampler'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 230
+    - 12
+    rotation: 0
+    state: enabled
+- name: receiver_dir
+  id: parameter
+  parameters:
+    label: Reference receiver (Python phase)
+    type: str
+    value: '""'
+    short_id: r
+    comment: empty = ATSC3_RECEIVER_DIR
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 370
+    - 12
+    rotation: 0
+    state: enabled
+- name: procs
+  id: parameter
+  parameters:
+    label: Worker processes (CTI/LDM)
+    type: intx
+    value: '4'
+    short_id: p
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 640
+    - 12
+    rotation: 0
+    state: enabled
+- name: freq
+  id: parameter
+  parameters:
+    label: Channel centre (Hz)
+    type: eng_float
+    value: 600e6
+    short_id: f
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 860
+    - 12
+    rotation: 0
+    state: enabled
+- name: driver
+  id: parameter
+  parameters:
+    label: SoapySDR driver
+    type: str
+    value: '"sdrplay"'
+    short_id: d
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1040
+    - 12
+    rotation: 0
+    state: enabled
+- name: antenna
+  id: parameter
+  parameters:
+    label: Antenna port
+    type: str
+    value: '""'
+    short_id: a
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1230
+    - 12
+    rotation: 0
+    state: enabled
+- name: gain
+  id: parameter
+  parameters:
+    label: Overall gain (dB)
+    type: eng_float
+    value: '30'
+    short_id: g
+    comment: or tune the elements with gr-rxtune
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1390
+    - 12
+    rotation: 0
+    state: enabled
+- name: src
+  id: soapy_custom_source
+  parameters:
+    driver: driver
+    type: fc32
+    nchan: '1'
+    dev_args: '""'
+    samp_rate: samp_rate
+    center_freq0: freq
+    bandwidth0: 8e6
+    antenna0: antenna
+    gain0: gain
+    agc0: 'False'
+    minoutbuf: '8388608'
+    comment: 'a second of buffer: start-up is the hungry moment'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 450
+    rotation: 0
+    state: enabled
+- name: spectrum
+  id: qtgui_freq_sink_x
+  parameters:
+    type: complex
+    name: '"carrier (baseband)"'
+    fftsize: '2048'
+    fc: '0'
+    bw: samp_rate
+    average: '0.05'
+    gui_hint: 0,0,1,1
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 330
+    - 140
+    rotation: 0
+    state: enabled
+- name: waterfall
+  id: qtgui_waterfall_sink_x
+  parameters:
+    type: complex
+    name: '"waterfall"'
+    fftsize: '2048'
+    fc: '0'
+    bw: samp_rate
+    gui_hint: 0,1,1,1
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 330
+    - 300
+    rotation: 0
+    state: enabled
+- name: panel
+  id: atsc3rx_status_panel
+  parameters:
+    label: ATSC 3.0 receiver
+    show_plan: show_plan
+    gui_hint: 1,0,1,2
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 960
+    - 660
+    rotation: 0
+    state: enabled
+- name: show_plan
+  id: parameter
+  parameters:
+    label: Show the PLP layout
+    type: intx
+    value: '1'
+    short_id: s
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1040
+    - 160
+    rotation: 0
+    state: enabled
+- name: sync
+  id: atsc3rx_frame_sync
+  parameters:
+    samp_rate: samp_rate
+    receiver_dir: receiver_dir
+    fe_threads: '8'
+    drop_when_behind: 'True'
+    settle_sec: '2.0'
+    inline: 'False'
+    comment: bootstrap -> L1 -> plan; one PDU per frame
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 330
+    - 470
+    rotation: 0
+    state: enabled
+- name: dec
+  id: atsc3rx_frame_decoder
+  parameters:
+    receiver_dir: receiver_dir
+    threads: '16'
+    iters: '50'
+    procs: procs
+    comment: OFDM, de-interleave, LDPC, BCH
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 640
+    - 470
+    rotation: 0
+    state: enabled
+- name: alp
+  id: atsc3rx_alp_decap
+  parameters:
+    receiver_dir: receiver_dir
+    comment: link layer -> IP datagrams
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 960
+    - 478
+    rotation: 0
+    state: enabled
+- name: udp
+  id: atsc3rx_dg_udp_sink
+  parameters:
+    host: ''
+    interface: 127.0.0.1
+    ttl: '0'
+    comment: 'as broadcast: multicast, TTL 0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1230
+    - 478
+    rotation: 0
+    state: enabled
+connections:
+- - src
+  - '0'
+  - sync
+  - '0'
+- - src
+  - '0'
+  - spectrum
+  - '0'
+- - src
+  - '0'
+  - waterfall
+  - '0'
+- - sync
+  - plan
+  - panel
+  - plan
+- - dec
+  - quality
+  - panel
+  - quality
+- - sync
+  - frames
+  - dec
+  - frames
+- - dec
+  - feedback
+  - sync
+  - feedback
+- - dec
+  - bb
+  - alp
+  - bb
+- - alp
+  - datagrams
+  - udp
+  - datagrams
+metadata:
+  file_format: 1
+  grc_version: 3.10.12.0

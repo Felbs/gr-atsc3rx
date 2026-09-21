@@ -1,0 +1,27 @@
+id: atsc3rx_status_panel
+label: ATSC3 Status Panel
+category: '[atsc3rx]'
+flags: [python]
+documentation: |-
+  Qt panel: the plan the broadcaster signals, per-frame FEC health as a strip (green = every
+  block BCH-clean), SNR off the known dummy cells as a trace, and totals. Optional: the
+  receiver runs without it. Docks like any QT GUI widget (GUI Hint).
+  Show plan = No hides the PLP layout (for screenshots of a real station).
+templates:
+  imports: from gnuradio import atsc3rx
+  make: |-
+    <%
+        win = '_%s_win' % id
+    %>    ${win} = atsc3rx.status_panel(label=${label}, show_plan=${show_plan}, snr_lo=${snr_lo}, snr_hi=${snr_hi}, parent=self)
+    self.${id} = ${win}
+    ${gui_hint() % win}
+parameters:
+- {id: label, label: Label, dtype: string, default: 'ATSC 3.0'}
+- {id: show_plan, label: Show plan, dtype: bool, default: 'True'}
+- {id: snr_lo, label: SNR min (dB), dtype: real, default: '0', hide: part}
+- {id: snr_hi, label: SNR max (dB), dtype: real, default: '35', hide: part}
+- {id: gui_hint, label: GUI Hint, dtype: gui_hint, hide: part}
+inputs:
+- {domain: message, id: plan, optional: true}
+- {domain: message, id: quality, optional: true}
+file_format: 1

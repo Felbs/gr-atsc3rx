@@ -18,3 +18,12 @@ from .alp_decap import alp_decap
 from .dg_sink import dg_sink
 from .capture_source import capture_source
 from .dg_udp_sink import dg_udp_sink
+
+
+def __getattr__(name):
+    # Qt is optional: the receiver runs headless. Import the panel only when it is asked for.
+    if name == "status_panel":
+        from .status_panel import status_panel as _cls   # (this also binds the SUBMODULE under the same name...)
+        globals()["status_panel"] = _cls                 # ...so rebind the name to the class
+        return _cls
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

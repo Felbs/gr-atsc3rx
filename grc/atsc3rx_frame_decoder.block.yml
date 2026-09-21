@@ -24,4 +24,5 @@ outputs:
 - {domain: message, id: quality, optional: true}
 - {domain: message, id: dial, optional: true}
 - {domain: message, id: liveness, optional: true}
+- {domain: message, id: feedback, optional: true}
 file_format: 1

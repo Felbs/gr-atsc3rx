@@ -234,13 +234,40 @@ class frame_sync(gr.sync_block):
 
     # ---- end of input ----------------------------------------------------------------
     def flush(self, timeout=600.0):
-        """A file has ended: push what is buffered through the front end and wait for it."""
-        self._hand_over()
-        if self.fe is None:
-            self._q.put(np.zeros(0, np.complex64))                # a very short input: sniff what there is
+        """A file has ended: push what is buffered through the front end and wait for it.
+
+        Safe to call after the flowgraph has stopped this block: with the front-end thread
+        gone the queue is drained here instead, so the tail of a capture is never lost and
+        this never waits on a thread that has exited."""
         t = time.time()
-        while self._q.unfinished_tasks and time.time() - t < timeout:
-            time.sleep(0.05)
+        if self._worker.is_alive():
+            self._hand_over()
+            if self.fe is None:
+                self._q.put(np.zeros(0, np.complex64))            # a very short input: sniff what there is
+            while self._q.unfinished_tasks and self._worker.is_alive() and time.time() - t < timeout:
+                time.sleep(0.05)
+        if not self._worker.is_alive():
+            self._drain_here()
+
+    def _drain_here(self):
+        blocks = []
+        while True:
+            try:
+                b = self._q.get_nowait()
+            except queue.Empty:
+                break
+            if b is not None:
+                blocks.append(b)
+        if self._acc_n:
+            blocks.append(np.concatenate(self._acc))
+            self._acc, self._acc_n = [], 0
+        if self.fe is None:
+            blocks.append(np.zeros(0, np.complex64))
+        for b in blocks:
+            try:
+                self._feed(b)
+            except Exception as e:                                  # noqa: BLE001
+                self.rx.lines.append(f"front end: {type(e).__name__}: {e}")
 
     def stop(self):
         self._quit = True

@@ -7,27 +7,43 @@ GNU Radio has had a complete ATSC 3.0 *transmitter* for years
 ([drmpeg/gr-atsc3](https://github.com/drmpeg/gr-atsc3)). It has never had the other half -
 not for ATSC 3.0, and not for its cousin DVB-T2 either. This is the other half.
 
-> **Status: Python phase (0.1).** The blocks below work end to end and are held **bit-exact**
-> against a reference receiver that decodes live television - but in this phase they *call*
-> that receiver's code rather than re-implementing it, so you need it installed, and the
-> chain runs at about 0.4x real time. Stages move to C++ one at a time, each only after it
-> passes the same gate. See `docs/DESIGN.md` for the plan and `docs/PRIOR_ART.md` for the field.
+> **Status: Python phase (0.1).** The blocks below work end to end - on captures **and on live
+> air** - and are held **bit-exact** against a reference receiver that decodes live television.
+> But in this phase they *call* that receiver's code rather than re-implementing it, so you need
+> it installed, and only hybrid-interleaver multiplexes run faster than real time. Stages move to
+> C++ one at a time, each only after it passes the same gate. `docs/TEST_REPORT.md` says exactly
+> what has and has not been run; `docs/DESIGN.md` has the plan; `docs/PRIOR_ART.md` the field.
+
+![The receiver running on live air inside a GNU Radio Companion flowgraph](docs/img/rx_radio_qt_live.png)
+
+*`examples/rx_radio_qt.grc` on an SDRplay and an indoor antenna: every frame's FEC blocks
+BCH-clean (the green strip), SNR read off the frame's known dummy cells. The plan readout is
+switched off here - what a real station signals is that station's data, not this project's.*
 
 ## What it does
 
 ```
  complex samples ─► Frame Sync ─► Frame Decoder ─► ALP Decap ─► UDP / your application
                        │              │
-                       └─ plan        └─ dial (SNR) + liveness (BCH-clean blocks)
+                       │  ▲           └─ dial (SNR) + liveness (BCH-clean blocks)
+                       │  └─ feedback: "that frame was weak" -> re-scan timing, or re-acquire
+                       └─ plan
 ```
+
+![The flowgraph](docs/img/grc_rx_radio_qt.png)
 
 | Block | In -> out |
 |---|---|
-| **ATSC3 Frame Sync** | samples -> one PDU per frame. Finds the bootstrap, decodes L1-Basic / L1-Detail, builds the frame **plan from what is signalled** (never from the channel number), tracks timing at the signalled frame length. The plan rides in every frame's metadata, because in ATSC 3.0 the geometry arrives over the air - FFT size, guard interval, pilots and PLP layout can change per subframe. |
+| **ATSC3 Frame Sync** | samples -> one PDU per frame. Finds the bootstrap, decodes L1-Basic / L1-Detail, builds the frame **plan from what is signalled** (never from the channel number), tracks timing at the signalled frame length, and re-acquires when the decoder says the frames are weak or the radio dropped samples. The plan rides in every frame's metadata, because in ATSC 3.0 the geometry arrives over the air - FFT size, guard interval, pilots and PLP layout can change per subframe. |
 | **ATSC3 Frame Decoder** | frame -> baseband payload. OFDM demod, channel estimate, de-interleaving, soft demapping, LDPC, BCH. Publishes a **dial** that is continuous below the decode cliff (SNR off the frame's known dummy cells) and **liveness** that cannot be faked (BCH-clean block count) - both plug straight into [gr-rxtune](https://github.com/Felbs/gr-rxtune). |
 | **ATSC3 ALP Decap** | baseband payload -> IPv4/UDP datagrams as PDUs. **GNU Radio's job ends here.** ROUTE, MMTP, the guide, audio and video belong to whatever consumes the datagrams. |
+| **ATSC3 Datagram UDP Sink** | sends each datagram to the multicast group and port it was broadcast with, TTL 0 by default (it stays on your machine), so a ROUTE/MMTP stack or a packet capture sees the broadcast as if it had a tuner. |
+| **ATSC3 Status Panel** | optional Qt panel: the plan, a per-frame FEC strip, the SNR trace, totals. |
 | **ATSC3 Capture Source** | a raw IQ file as a stream that goes quiet, rather than ending the flowgraph, at end of file - message blocks still have frames in flight. |
 | **ATSC3 Datagram File Sink** | the acceptance-test sink: writes and hashes datagrams in the reference receiver's dump format. |
+
+`apps/atsc3_rx.py` - the whole receiver from the command line, capture or radio, with a status
+line a second and datagrams out on UDP or to a file.
 
 `apps/atsc3_identify.py` - point it at a capture or a SoapySDR device and in about two seconds
 it prints what the carrier is transmitting: FFT size, guard interval, pilot pattern, frame
@@ -42,14 +58,15 @@ content key.
 ## How it is tested
 
 1. **Bit-exact against the reference receiver** (`util/gate_bitexact.py`): one capture through
-   both; the datagram streams must match byte for byte, in order. Current result on a 12 s
-   off-air capture: 49 frames, 3626 / 3626 FEC blocks BCH-clean, **all 4150 reference datagrams
-   reproduced exactly** (+1 trailing datagram from a final frame the reference run leaves
-   unfinished at end of file). A stage is not "ported" until this still passes.
+   both; the datagram files must be the same bytes. Current result, both decode paths:
+   hybrid interleaver 4150 / 4150 datagrams, convolutional interleaver + LDM pipeline
+   12285 / 12285 - **sha256 identical**. A stage is not "ported" until this still passes.
 2. **TX -> RX loopback against drmpeg/gr-atsc3** - its V&V flowgraphs run at 6.912 MS/s, our
    native rate, so they are a radio-free signal generator for every mode it can make.
    *Not yet run: it needs a C++ build environment (Linux).*
-3. **Live air.**
+3. **Live air.** 100.00 % of FEC blocks BCH-clean over 45 s from the command line; 99.98 - 100 %
+   over 50 - 75 s from the GRC flowgraph. One radio, one multiplex, short runs: see the report.
+4. **QA** with a fake reference receiver, so CI needs no receiver, capture or radio: 21 tests.
 
 No captured broadcast content is, or ever will be, in this repository: test signals come from
 the transmitter in (2); captures and their oracles stay on the machine that made them.
@@ -59,6 +76,7 @@ the transmitter in (2); captures and their oracles stay on the machine that made
 ```
 export ATSC3_RECEIVER_DIR=/path/to/reference/receiver        # the directory containing lab/
 python apps/atsc3_identify.py --capture some.cs16            # or --soapy "driver=..." --freq HZ
+python apps/atsc3_rx.py --capture some.cs16 --udp             # or --soapy "driver=..." --freq HZ --gain ...
 python util/gate_bitexact.py some.cs16 --oracle some.dg      # oracle = the reference receiver's --dump-dg
 ```
 

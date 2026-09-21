@@ -29,3 +29,26 @@ Owner approved: name, GPL-3.0-or-later, depend on the reference receiver during 
 
 Not done / unverified: gate 2 (no C++ toolchain on this PC); the `ldm` decode path has never been run
 here; no live-radio run of these blocks yet; no QA files, CI or GRC example yet; xdsopl Type A fit unverified.
+
+## 2026-09-21 — session 3: LDM path gated, live air, GRC examples, QA
+
+- **CTI/LDM path gated**: 25 s slice of a banked capture; oracle 3534/3534 FEC, 12285 datagrams; the chain
+  reproduces it with the identical sha256, with and without worker processes. First attempt passed but took
+  178 s: PMT serialisation of frame windows (0.46 s each) -> windows by reference. That exposed a silent
+  frame-dropping cap (49 of 102 frames lost) -> back-pressure for files, counted drops for radios. MKL's 32
+  threads throttled the decoder -> BLAS pinned in the bridge. A flush race lost the last 55 datagrams ->
+  ordered draining. Now 39 s wall (0.64x); hybrid path 10 s for 11.9 s of air, sha256 identical too.
+- **Live air**: four runs to get from "3 frames then nothing" to 12136/12136 (100.00 %) over 45 s:
+  front end moved to its own thread; decoder -> frame sync `feedback` port implementing the reference
+  receiver's weak-frame / bad-run supervisor; continuity breaks; 1 s source buffer; 2 s settle discard.
+  Radio shared under the site lock throughout; every run stopped by its own timer, nothing killed.
+- New: `dg_udp_sink` (multicast, TTL 0), `status_panel` (Qt, lazy import), `apps/atsc3_rx.py`,
+  `util/make_grc.py` -> `examples/rx_capture.grc` + `rx_radio_qt.grc` (both compile with grcc),
+  `util/grc_screenshot.py`, `util/run_qt_shot.py`, `docs/img/` (2 canvases + 1 live window, plan hidden).
+- GRC flowgraph on live air: 13690/13690, 21234/21238, 21161/21164. Generated headless flowgraph verified
+  with an independent multicast listener (3827 datagrams received).
+- **QA**: 21 tests in 5 files against `qa_common.fake_receiver()` - no receiver, capture or radio needed.
+  Writing them found two more defects (flush() waiting 10 min on a stopped thread; enum GRC param).
+- `docs/TEST_REPORT.md` written: results, 12 defects, and what was NOT run.
+
+Not done: gate 2; any C++; Linux build/CI; live CTI/LDM; soaks longer than 75 s; other radios.
