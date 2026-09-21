@@ -1,0 +1,24 @@
+id: atsc3rx_frame_decoder
+label: ATSC3 Frame Decoder
+category: '[atsc3rx]'
+flags: [python]
+documentation: |-
+  One frame of samples in; baseband payload out. OFDM demod, channel estimation,
+  de-interleaving, soft demapping, LDPC, BCH, descrambling.
+  'dial' = SNR off the frame's known dummy cells (continuous below the decode cliff);
+  'liveness' = running count of BCH-clean FEC blocks. Both plug straight into gr-rxtune.
+templates:
+  imports: from gnuradio import atsc3rx
+  make: atsc3rx.frame_decoder(receiver_dir=${receiver_dir}, threads=${threads}, iters=${iters})
+parameters:
+- {id: receiver_dir, label: Receiver dir, dtype: string, default: ''}
+- {id: threads, label: Threads, dtype: int, default: '8'}
+- {id: iters, label: LDPC iterations, dtype: int, default: '50', hide: part}
+inputs:
+- {domain: message, id: frames}
+outputs:
+- {domain: message, id: bb}
+- {domain: message, id: quality, optional: true}
+- {domain: message, id: dial, optional: true}
+- {domain: message, id: liveness, optional: true}
+file_format: 1

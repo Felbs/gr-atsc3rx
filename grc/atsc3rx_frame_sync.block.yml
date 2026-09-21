@@ -1,0 +1,24 @@
+id: atsc3rx_frame_sync
+label: ATSC3 Frame Sync
+category: '[atsc3rx]'
+flags: [python]
+documentation: |-
+  Complex baseband in; one PDU per ATSC 3.0 frame out. Finds the bootstrap, decodes
+  L1-Basic and L1-Detail, builds the frame plan FROM WHAT IS SIGNALLED, tracks frame
+  timing, and cuts one window of samples per frame. The plan travels with every frame.
+  'plan' is published once per acquisition: connect a Message Debug to see what a
+  carrier is transmitting. Any input rate; 6.912 MS/s avoids the resampler.
+  Python phase: needs the reference receiver (Receiver dir, or ATSC3_RECEIVER_DIR).
+templates:
+  imports: from gnuradio import atsc3rx
+  make: atsc3rx.frame_sync(samp_rate=${samp_rate}, receiver_dir=${receiver_dir}, fe_threads=${fe_threads})
+parameters:
+- {id: samp_rate, label: Sample rate, dtype: real, default: '6.912e6'}
+- {id: receiver_dir, label: Receiver dir, dtype: string, default: ''}
+- {id: fe_threads, label: Front-end threads, dtype: int, default: '4', hide: part}
+inputs:
+- {domain: stream, dtype: complex}
+outputs:
+- {domain: message, id: frames}
+- {domain: message, id: plan, optional: true}
+file_format: 1

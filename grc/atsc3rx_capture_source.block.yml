@@ -1,0 +1,17 @@
+id: atsc3rx_capture_source
+label: ATSC3 Capture Source
+category: '[atsc3rx]'
+flags: [python]
+documentation: |-
+  A raw IQ file (.cs16 interleaved int16, or .cf32) as a complex stream. At end of file
+  it goes QUIET instead of ending the flowgraph, so frames still in flight are decoded.
+templates:
+  imports: from gnuradio import atsc3rx
+  make: atsc3rx.capture_source(path=${path}, fmt=${fmt}, realtime_rate=${realtime_rate})
+parameters:
+- {id: path, label: File, dtype: file_open, default: ''}
+- {id: fmt, label: Format, dtype: string, default: '', hide: part}
+- {id: realtime_rate, label: Pace to rate (0 = off), dtype: real, default: '0'}
+outputs:
+- {domain: stream, dtype: complex}
+file_format: 1

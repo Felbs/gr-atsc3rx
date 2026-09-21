@@ -1,0 +1,15 @@
+id: atsc3rx_dg_sink
+label: ATSC3 Datagram File Sink
+category: '[atsc3rx]'
+flags: [python]
+documentation: |-
+  Writes datagrams as <4s src><4s dst><H sport><H dport><I length> + payload and hashes
+  them: the acceptance-test sink (util/gate_bitexact.py).
+templates:
+  imports: from gnuradio import atsc3rx
+  make: atsc3rx.dg_sink(path=${path})
+parameters:
+- {id: path, label: File, dtype: file_save, default: ''}
+inputs:
+- {domain: message, id: datagrams}
+file_format: 1

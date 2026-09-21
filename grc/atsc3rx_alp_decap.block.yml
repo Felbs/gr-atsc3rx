@@ -1,0 +1,18 @@
+id: atsc3rx_alp_decap
+label: ATSC3 ALP Decap
+category: '[atsc3rx]'
+flags: [python]
+documentation: |-
+  Baseband payload in; IPv4/UDP datagrams out as PDUs (meta: src, dst, sport, dport).
+  This is where GNU Radio's job ends: ROUTE, MMTP, the guide, audio and video belong to
+  whatever consumes the datagrams. Nothing here decrypts anything.
+templates:
+  imports: from gnuradio import atsc3rx
+  make: atsc3rx.alp_decap(receiver_dir=${receiver_dir})
+parameters:
+- {id: receiver_dir, label: Receiver dir, dtype: string, default: ''}
+inputs:
+- {domain: message, id: bb}
+outputs:
+- {domain: message, id: datagrams}
+file_format: 1
