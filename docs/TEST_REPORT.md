@@ -35,6 +35,7 @@ verdict the night before. The radio was shared under a site lock (RXTUNE_LOCK) f
 | 3 (+ 1 s of buffer after the source) | no overflow; still 1 re-acquisition: SNR sagged 22 -> 12 dB over the first 8 frames. |
 | 4 (+ discard the radio's first 2 s) | **45 s: 164 frames, 12136 / 12136 BCH-clean (100.00 %), 0 re-acquisitions, 0 continuity breaks, 14374 datagrams.** |
 | GRC flowgraph `rx_radio_qt.grc` | 50 s: 13690 / 13690 (100.00 %). 75 s: 21234 / 21238 (99.98 %). 75 s: 21161 / 21164 (99.99 %). |
+| `examples/tv_bridge.py` (chain -> reference transport -> live directory -> mpv) | 100 s: 28712 / 28712 (100.00 %), 0 re-acquisitions; 185 media segments: 720p60 HEVC video lane, 2 AC-4 audio lanes, 1 subtitle lane; mpv played 1 min 36 s of video to end of file. Audio decode (`--audio`) and the reference receiver's full A/V viewer were NOT run on it. |
 
 `docs/img/rx_radio_qt_live.png` is the third GRC run's window. Its plan readout is switched off
 (`Show plan = No`): what a real station signals is that station's data, not this project's.

@@ -52,3 +52,12 @@ here; no live-radio run of these blocks yet; no QA files, CI or GRC example yet;
 - `docs/TEST_REPORT.md` written: results, 12 defects, and what was NOT run.
 
 Not done: gate 2; any C++; Linux build/CI; live CTI/LDM; soaks longer than 75 s; other radios.
+
+## 2026-09-21 — session 4: public repo; television through the chain
+- Owner said "give it a repo": dox gate 0/0 on tree + history grep clean -> github.com/Felbs/gr-atsc3rx (public).
+- `examples/tv_bridge.py`: Soapy -> Frame Sync -> Frame Decoder -> `transport_sink` (the reference receiver's
+  Transport + LiveWriter, fed the `bb` PDUs) -> live directory -> its `atsc3_play.py` -> mpv. First run wrote
+  all four lanes but no picture: the reference player reads the lane list ONCE at launch, and a second attempt
+  still raced live.json (written every few seconds, audio lanes listed first). The bridge now starts the players
+  only once live.json lists a video lane that exists. Third run: 28712/28712 FEC, mpv played 1:36 of 720p60.
+- Not run: `--audio` (AC-4 -> PCM) and the full A/V viewer on a bridge-written directory.

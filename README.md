@@ -45,6 +45,11 @@ switched off here - what a real station signals is that station's data, not this
 `apps/atsc3_rx.py` - the whole receiver from the command line, capture or radio, with a status
 line a second and datagrams out on UDP or to a file.
 
+`examples/tv_bridge.py` - **watch television through it**: GNU Radio owns the radio and the whole physical
+layer, and the baseband output feeds the reference receiver's transport and players (everything above IP is
+deliberately not this project's). Tested on live air: 100 s, 28712 / 28712 FEC blocks BCH-clean, 720p60 HEVC
+video + two AC-4 audio lanes + subtitles written, video played in mpv. Clear services only.
+
 `apps/atsc3_identify.py` - point it at a capture or a SoapySDR device and in about two seconds
 it prints what the carrier is transmitting: FFT size, guard interval, pilot pattern, frame
 length, every PLP with its modulation and code rate, time-interleaver mode, LDM.
