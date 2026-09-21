@@ -17,3 +17,4 @@ from .frame_decoder import frame_decoder
 from .alp_decap import alp_decap
 from .dg_sink import dg_sink
 from .capture_source import capture_source
+from .dg_udp_sink import dg_udp_sink

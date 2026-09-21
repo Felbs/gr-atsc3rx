@@ -1,0 +1,21 @@
+id: atsc3rx_dg_udp_sink
+label: ATSC3 Datagram UDP Sink
+category: '[atsc3rx]'
+flags: [python]
+documentation: |-
+  Sends each recovered datagram as UDP to the destination address and port it was broadcast
+  with (ATSC 3.0 services are multicast groups), so a ROUTE/MMTP stack, a packet capture or
+  a player sees the broadcast as if it had a tuner. Host: leave empty for each datagram's own
+  multicast address, or name one host to receive everything (ports kept).
+  TTL 0 (default) keeps the packets on this machine. Raising it re-transmits a broadcast
+  onto your network: your decision, your responsibility.
+templates:
+  imports: from gnuradio import atsc3rx
+  make: atsc3rx.dg_udp_sink(host=${host}, interface=${interface}, ttl=${ttl})
+parameters:
+- {id: host, label: Host (empty = as broadcast), dtype: string, default: ''}
+- {id: interface, label: Multicast interface, dtype: string, default: '127.0.0.1'}
+- {id: ttl, label: TTL, dtype: int, default: '0'}
+inputs:
+- {domain: message, id: datagrams}
+file_format: 1

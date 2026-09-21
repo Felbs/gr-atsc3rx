@@ -31,9 +31,8 @@ class capture_source(gr.sync_block):
         out = output_items[0]
         want = len(out)
         if self.eof:
-            time.sleep(0.05)                       # quiet, not finished
-            out[:min(want, 4096)] = 0
-            return min(want, 4096)
+            time.sleep(0.05)                       # quiet, not finished: no samples, and no end of stream
+            return 0
         if self.fmt == "cf32":
             x = np.frombuffer(self.fh.read(want * 8), dtype=np.complex64)
         else:
@@ -42,7 +41,7 @@ class capture_source(gr.sync_block):
             x = (raw[0::2] + 1j * raw[1::2]).astype(np.complex64)
         if len(x) == 0:
             self.eof = True
-            return 0 if want == 0 else self.work(input_items, output_items)
+            return 0
         out[:len(x)] = x
         self.n += len(x)
         if self.rate:

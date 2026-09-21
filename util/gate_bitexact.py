@@ -60,6 +60,7 @@ def main():
     tb.connect(src, sync)
     tb.msg_connect(sync, "frames", dec, "frames")
     tb.msg_connect(dec, "bb", alp, "bb")
+    tb.msg_connect(dec, "feedback", sync, "feedback")
     tb.msg_connect(alp, "datagrams", sink, "datagrams")
     t0 = time.time()
     tb.start()
@@ -69,7 +70,7 @@ def main():
         state = (src.eof, sync.n_frames, dec.n_frames, sink.n)
         still = still + 1 if state == last else 0
         last = state
-        if src.eof and still >= 6:                 # nothing has moved for 6 s after end of file
+        if src.eof:
             break
     # messages are asynchronous: flush a stage only once it has received everything the
     # stage before it published, or the tail of the capture is flushed past, not through
@@ -77,6 +78,8 @@ def main():
         t = time.time()
         while not done() and time.time() - t < limit:
             time.sleep(0.1)
+    sync.flush()
+    settle(lambda: dec.n_in >= sync.n_frames, 600.0)
     dec.flush()
     settle(lambda: alp.n_bb >= dec.n_frames)
     alp.flush()
@@ -91,7 +94,7 @@ def main():
           f"{dec.n_bch} BCH-clean;  {wall:.0f} s wall")
     air = sync.n_frames * (sync.plan.frame_samples / 6.912e6 if sync.plan else 0)
     print(f"time   : {air:.1f} s of air;  frame sync busy {sync.t_busy - sync.t_wait:.1f} s (+{sync.t_wait:.1f} s waiting), frame decoder busy {dec.t_busy:.1f} s"
-          f"  -> {air / max(wall - 7, 1e-9):.2f}x real time end to end")
+          f"  -> {air / max(wall, 1e-9):.2f}x real time end to end (start-up included)")
     ours, theirs = read_dg(a.out), read_dg(a.oracle)
     sha_o = hashlib.sha256(open(a.oracle, "rb").read()).hexdigest()
     print(f"ours   : {len(ours)} datagrams  sha256 {sha[:16]}...")

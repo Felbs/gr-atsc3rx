@@ -36,6 +36,9 @@ class frame_decoder(gr.basic_block):
          message 'quality'  {frame, snr_db, converged, bch_ok, n_fec, dummy}
          message 'dial'     (SNR . dB)            for rxtune
          message 'liveness' cumulative BCH-clean FEC blocks
+         message 'feedback' {frame, acq, weak}    back to Frame Sync: the decoder is the only
+                            stage that KNOWS whether timing is right. Weak = under 81% of the
+                            frame's FEC blocks converged (hybrid), or no interleaver phase (CTI).
     """
 
     def __init__(self, receiver_dir="", threads=8, iters=50, cpu_fast=True, procs=0, proc_threads=4):
@@ -49,9 +52,11 @@ class frame_decoder(gr.basic_block):
         self.n_frames = self.n_conv = self.n_bch = self.n_fec = 0
         self._lock = threading.Lock()
         self.t_busy = 0.0
+        self.n_in = 0                           # frames fully handled (published or not)
         self.message_port_register_in(pmt.intern("frames"))
         self.set_msg_handler(pmt.intern("frames"), self.on_frame)
-        for p in ("bb", "quality", "dial", "liveness"):
+        self.acq = None
+        for p in ("bb", "quality", "dial", "liveness", "feedback"):
             self.message_port_register_out(pmt.intern(p))
 
     def _build(self, mode, plan_json):
@@ -72,16 +77,26 @@ class frame_decoder(gr.basic_block):
         w = _core.claim_window(meta["win"]) if "win" in meta else None
         if w is None:
             if pmt.length(pmt.cdr(msg)) == 0:
+                self.n_in += 1
                 return                                  # by-reference frame from another process, or already claimed
             w = np.asarray(pmt.c64vector_elements(pmt.cdr(msg)), dtype=np.complex128)
         tw = time.perf_counter()
         with self._lock:
             if self.dec is None:
                 self._build(meta["mode"], meta.get("plan", ""))
+            acq = meta.get("acq", 0)
+            if self.acq is not None and acq != self.acq and self.mode == "ldm":
+                self.dec.reset()                        # the front end re-acquired: interleaver state is void
+            self.acq = acq
             if self.mode == "ldm":
                 self._ldm(meta, w)
+                ph = getattr(self.dec, "ph", None)
+                weak = ph is not None and ph.state == "cold"
             else:
-                self._m9(meta, w)
+                weak = self._m9(meta, w)
+        self.n_in += 1
+        self.message_port_pub(pmt.intern("feedback"), pmt.to_pmt(
+            {"frame": int(meta["index"]), "acq": int(acq), "weak": bool(weak)}))
         self.t_busy += time.perf_counter() - tw
 
     def _m9(self, meta, w):
@@ -96,8 +111,10 @@ class frame_decoder(gr.basic_block):
                 bounds.append(self.bb_abs + len(stream) + ptr)     # absolute: the link layer resumes across frames
             stream += pay
         self.bb_abs += len(stream)
-        self._publish(meta, bytes(stream), bounds, diag.get("converged", 0), diag.get("bch_ok", 0),
-                      diag.get("n_fec", 0), diag.get("snr_db"), diag.get("dummy"))
+        conv, n_fec = int(diag.get("converged", 0)), int(diag.get("n_fec", 0))
+        self._publish(meta, bytes(stream), bounds, conv, diag.get("bch_ok", 0),
+                      n_fec, diag.get("snr_db"), diag.get("dummy"))
+        return conv < min(60, int(round(0.81 * n_fec))) if n_fec else True
 
     def _ldm(self, meta, w):
         ps = meta.get("ps", -1)
