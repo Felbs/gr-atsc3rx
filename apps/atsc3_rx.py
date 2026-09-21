@@ -132,7 +132,7 @@ def main():
             signal.signal(signal.SIGBREAK, lambda *_: stop.set())
         t0 = time.time()
         tb.start()
-        said_plan, last, still, why = False, None, 0, "end of input"
+        said_plan, why = False, "end of input"
         while not stop.is_set():
             time.sleep(1.0)
             if lk is not None:
@@ -155,9 +155,6 @@ def main():
                     why = f"{a.seconds:.0f} s elapsed"
                     break
             else:
-                state = (src.eof, sync.n_frames, dec.n_frames, alp.n_datagrams)
-                still = still + 1 if state == last else 0
-                last = state
                 if src.eof:
                     break
         if stop.is_set():

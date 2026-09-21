@@ -117,9 +117,8 @@ def main():
             prev = p
         return b
     bo = binned(ours, lambda x: x["t"], lambda x: x["fec"] - x["bch"])
-    # the reference runs head-start seconds behind the air; shift its clock onto ours
-    lag = (ours[0]["t"] - 0.0) if False else 0.0
-    br = binned(refpts, lambda x: x[0] + lag, lambda x: x[2] - x[1])
+    # the reference's points are already on the AIR clock (frames x frame period), like ours
+    br = binned(refpts, lambda x: x[0], lambda x: x[2] - x[1])
     bra, prev = {}, None
     for x in ours:
         if prev is not None:
