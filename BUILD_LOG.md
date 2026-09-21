@@ -61,3 +61,12 @@ Not done: gate 2; any C++; Linux build/CI; live CTI/LDM; soaks longer than 75 s;
   still raced live.json (written every few seconds, audio lanes listed first). The bridge now starts the players
   only once live.json lists a video lane that exists. Third run: 28712/28712 FEC, mpv played 1:36 of 720p60.
 - Not run: `--audio` (AC-4 -> PCM) and the full A/V viewer on a bridge-written directory.
+
+## 2026-09-21 — session 5: sound through the bridge
+- `tv_bridge.py --tv [--sap]`: once a video lane is listed, starts the reference AC-4 decoder (one per language) and the
+  full viewer (`atsc3_tv.py`: A/V sync, captions, player) on the bridge-written directory. `--helper-python` /
+  ATSC3_PYTHON picks the interpreter those tools run under (they need the reference receiver's environment, not GNU Radio's).
+- Run 1 (240 s): worked first time - VLC window with sound - but launching everything at once cost a re-acquisition.
+  Fix: one helper every 4 s, below-normal priority. Run 2 (300 s): clean through launch; one reception event at ~107 s.
+- Verified on the OUTPUT (the viewer's muxed TS), not on proxies: tracks, loudness, silence map, video decode errors.
+- Status line now carries SNR and its minimum since the previous line, so the next dropout can be told from a fade.

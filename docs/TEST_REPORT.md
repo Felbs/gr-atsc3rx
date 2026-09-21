@@ -35,7 +35,9 @@ verdict the night before. The radio was shared under a site lock (RXTUNE_LOCK) f
 | 3 (+ 1 s of buffer after the source) | no overflow; still 1 re-acquisition: SNR sagged 22 -> 12 dB over the first 8 frames. |
 | 4 (+ discard the radio's first 2 s) | **45 s: 164 frames, 12136 / 12136 BCH-clean (100.00 %), 0 re-acquisitions, 0 continuity breaks, 14374 datagrams.** |
 | GRC flowgraph `rx_radio_qt.grc` | 50 s: 13690 / 13690 (100.00 %). 75 s: 21234 / 21238 (99.98 %). 75 s: 21161 / 21164 (99.99 %). |
-| `examples/tv_bridge.py` (chain -> reference transport -> live directory -> mpv) | 100 s: 28712 / 28712 (100.00 %), 0 re-acquisitions; 185 media segments: 720p60 HEVC video lane, 2 AC-4 audio lanes, 1 subtitle lane; mpv played 1 min 36 s of video to end of file. Audio decode (`--audio`) and the reference receiver's full A/V viewer were NOT run on it. |
+| `examples/tv_bridge.py` (chain -> reference transport -> live directory -> mpv) | 100 s: 28712 / 28712 (100.00 %), 0 re-acquisitions; 185 media segments: 720p60 HEVC video lane, 2 AC-4 audio lanes, 1 subtitle lane; mpv played 1 min 36 s of video to end of file. |
+| `tv_bridge.py --tv --sap` (adds the reference AC-4 decoder x2 and its full A/V viewer) | **300 s: picture and sound.** 87639 / 88652 FEC blocks (98.86 %). Output measured, not assumed: the viewer's muxed stream is 270 s of HEVC 720p + English and Spanish stereo + DVB subtitles; mean level -17.8 / -15.9 dB; 0 video decode errors; AC-4 8616 frames, 0 bad. One reception event at ~107 s (14 weak frames, 1 re-acquisition, recovered unaided) is audible as a 5.4 s silence; the only other silence is the 3.4 s lead-in. SNR was 16-18 dB that hour against a ~15 dB cliff (21-22 dB in the morning runs), so a fade is the likely cause - but SNR was not being logged during that run, so that is an inference. It is logged now. |
+| same, 240 s, before the launch fix | the decoder, muxer and player all started in the same second and cost a re-acquisition at that moment (4.4 s of silence). Helpers now start one at a time at below-normal priority; the 300 s run was clean through launch. |
 
 `docs/img/rx_radio_qt_live.png` is the third GRC run's window. Its plan readout is switched off
 (`Show plan = No`): what a real station signals is that station's data, not this project's.
@@ -78,6 +80,8 @@ grcc compiles both example flowgraphs. **No CI yet** (no Linux build has been do
 9. Capture Source padded silence after end of file, which made the frame count differ from the reference by one. It now goes quiet.
 10. `flush()` waited for ten minutes on a front-end thread that GNU Radio had already stopped. It now drains the queue itself in that case.
 11. GRC enum parameter given an expression fell back to its default, so `Show plan = No` did nothing in the generated flowgraph. Now a bool. Caught by looking at the screenshot.
+13. The reference player reads the lane list once, at launch, and live.json lists audio lanes before video: the bridge started it too early twice. It now waits for a video lane that exists on disk.
+14. Starting the viewer stack (3 Python tools, ffmpeg, a player) in one second starved the radio thread: a re-acquisition. Staggered, below-normal priority.
 12. (test harness) A Python block that goes out of scope while its flowgraph runs is an access violation: `connect()` holds only the C++ half. And a finite stock source ends the flowgraph under message blocks that still have frames in flight - the reason Capture Source exists.
 
 ## 6. Not done
