@@ -113,6 +113,7 @@ def main():
         watch = watcher()
         tb.connect(src, sync)
         tb.msg_connect(sync, "frames", dec, "frames")
+        tb.msg_connect(sync, "plan", dec, "plan")
         tb.msg_connect(sync, "plan", watch, "plan")
         tb.msg_connect(dec, "bb", alp, "bb")
         tb.msg_connect(dec, "feedback", sync, "feedback")

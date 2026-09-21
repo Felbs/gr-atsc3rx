@@ -77,7 +77,7 @@ def load(receiver_dir=None, quiet=True):
 _windows = {}
 _win_cv = threading.Condition()
 _win_next = [1]
-WINDOW_CAP = 8                       # ~27 MB each
+WINDOW_CAP = 16                      # ~27 MB each: enough to ride out the decoder's start-up on a radio
 
 
 def park_window(w, drop=False, timeout=120.0):

@@ -38,7 +38,7 @@ from . import _core
 
 SNIFF_SEC = 0.75          # as the reference receiver: read this much air before asking L1
 BAD_RUN = 8               # consecutive weak frames before re-acquiring (reference default)
-QUEUE_BLOCKS = 16         # ~2 s of samples between work() and the front end
+QUEUE_BLOCKS = 32         # ~4 s of samples between work() and the front end
 
 
 class frame_sync(gr.sync_block):
@@ -67,7 +67,7 @@ class frame_sync(gr.sync_block):
         self._plan_json = ""
         self.mode = "m9"
         self.acq = 0                            # acquisition generation; the decoder resets on a change
-        self.n_frames = self.n_dropped = self.n_breaks = self.n_reacquire = 0
+        self.n_frames = self.n_dropped = self.n_breaks = self.n_reacquire = self.n_discarded = 0
         self.t_busy = self.t_wait = 0.0
         self._acc, self._acc_n = [], 0
         self._held, self._held_n = [], 0
@@ -111,6 +111,14 @@ class frame_sync(gr.sync_block):
             except queue.Full:                  # the air does not wait: this is a hole in the samples
                 self.n_breaks += 1
                 self._break = True
+                # Everything queued is from BEFORE the hole and the front end is about to re-acquire
+                # anyway, so it is stale: drop it all. Dropping only this block left the queue full, the
+                # (slow) re-acquisition overflowed it again, and one break became four a second, forever.
+                self.n_discarded += self._clear_queue()
+                try:
+                    self._q.put_nowait(blk)     # the first block after the hole
+                except queue.Full:
+                    pass
         else:
             while not self._quit:
                 try:
@@ -118,6 +126,16 @@ class frame_sync(gr.sync_block):
                     break
                 except queue.Full:
                     pass
+
+    def _clear_queue(self):
+        n = 0
+        while True:
+            try:
+                self._q.get_nowait()
+            except queue.Empty:
+                return n
+            self._q.task_done()
+            n += 1
 
     def on_feedback(self, msg):
         d = pmt.to_python(msg)
@@ -187,6 +205,12 @@ class frame_sync(gr.sync_block):
             return
         self.plan = plan
         self._plan_json = json.dumps(plan.to_spec()) if plan is not None else ""
+        self.mode = "ldm" if (plan is not None and plan.uses_cti) else "m9"
+        # the plan goes out FIRST: a decoder listening on 'plan' builds its tables while we build the front end
+        self.message_port_pub(pmt.intern("plan"), pmt.to_pmt(
+            {"mode": self.mode, "spec_json": self._plan_json,
+             "describe": plan.describe() if plan is not None else
+             "L1 did not verify: " + str(info.get("why", "unidentified"))}))
         if plan is not None and plan.uses_cti:
             self.mode = "ldm"                 # convolutional time interleaver: the LDM pipeline
             self.fe = rx.ST.FrontEnd(self.rate, ex=self.ex, fast=self.fast, plan=plan)
@@ -201,11 +225,6 @@ class frame_sync(gr.sync_block):
                 self.fe.ft.plan = plan
                 self.fe.ft.frame_samples = plan.frame_samples
                 self.fe.ft.reset()
-        doc = {"mode": self.mode,
-               "describe": plan.describe() if plan is not None else
-               "L1 did not verify: " + str(info.get("why", "unidentified")),
-               "spec_json": self._plan_json}
-        self.message_port_pub(pmt.intern("plan"), pmt.to_pmt(doc))
         for x in held:                        # hand the sniffed air back, in order
             self._push(x)
 

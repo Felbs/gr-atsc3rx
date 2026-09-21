@@ -132,6 +132,10 @@ class qa_frame_sync(gr_unittest.TestCase):
             sync._hand_over()
         self.assertEqual(sync.n_breaks, 2)
         self.assertTrue(sync._break)
+        # a break must leave HEADROOM: the stale queue is discarded and only the first block after the hole
+        # is kept. Leaving it full made the (slow) re-acquisition overflow again - four breaks a second, forever.
+        self.assertEqual(sync.n_discarded, 2)
+        self.assertEqual(sync._q.qsize(), 1)
 
     def test_006_settle_discards_the_first_moments_of_a_radio(self):
         root, _ = fake_receiver()

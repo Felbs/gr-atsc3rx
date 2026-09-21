@@ -32,7 +32,7 @@ def chain(y, live):
         blk("udp", "atsc3rx_dg_udp_sink", 1230, y + 8, host="", interface="127.0.0.1", ttl=0,
             comment="as broadcast: multicast, TTL 0"),
     ]
-    c = [["sync", "frames", "dec", "frames"], ["dec", "feedback", "sync", "feedback"],
+    c = [["sync", "frames", "dec", "frames"], ["sync", "plan", "dec", "plan"], ["dec", "feedback", "sync", "feedback"],
          ["dec", "bb", "alp", "bb"], ["alp", "datagrams", "udp", "datagrams"]]
     return b, c
 

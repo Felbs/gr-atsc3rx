@@ -315,6 +315,10 @@ connections:
   - frames
   - dec
   - frames
+- - sync
+  - plan
+  - dec
+  - plan
 - - dec
   - feedback
   - sync

@@ -32,6 +32,7 @@ from . import _core
 class frame_decoder(gr.basic_block):
     """
     in : message 'frames' (from Frame Sync)
+         message 'plan'   (from Frame Sync; optional) - prewarm as soon as the plan is known
     out: message 'bb'       PDU meta {frame, bounds, converged, bch_ok, n_fec} data = u8vector
          message 'quality'  {frame, snr_db, converged, bch_ok, n_fec, dummy}
          message 'dial'     (SNR . dB)            for rxtune
@@ -55,6 +56,8 @@ class frame_decoder(gr.basic_block):
         self.n_in = 0                           # frames fully handled (published or not)
         self.message_port_register_in(pmt.intern("frames"))
         self.set_msg_handler(pmt.intern("frames"), self.on_frame)
+        self.message_port_register_in(pmt.intern("plan"))
+        self.set_msg_handler(pmt.intern("plan"), self.on_plan)
         self.acq = None
         for p in ("bb", "quality", "dial", "liveness", "feedback"):
             self.message_port_register_out(pmt.intern(p))
@@ -71,6 +74,15 @@ class frame_decoder(gr.basic_block):
                                                cpu_fast=self.cpu_fast, plan=plan)
         self.dec.prewarm()
         self.mode = mode
+
+    def on_plan(self, msg):
+        """Optional: build the decoder's tables when the plan is known, not under the first frames.
+        On a radio those seconds of table building otherwise cost the first ~10 frames."""
+        d = pmt.to_python(msg)
+        if isinstance(d, dict) and d.get("mode") and d.get("spec_json"):
+            with self._lock:
+                if self.dec is None:
+                    self._build(d["mode"], d["spec_json"])
 
     def on_frame(self, msg):
         meta = pmt.to_python(pmt.car(msg))

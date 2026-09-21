@@ -19,6 +19,7 @@ parameters:
 - {id: iters, label: LDPC iterations, dtype: int, default: '50', hide: part}
 inputs:
 - {domain: message, id: frames}
+- {domain: message, id: plan, optional: true}
 outputs:
 - {domain: message, id: bb}
 - {domain: message, id: quality, optional: true}

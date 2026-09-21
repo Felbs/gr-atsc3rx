@@ -150,6 +150,7 @@ def main():
         tv = transport_sink(a.receiver, live_dir)
         tb.connect(src, sync)
         tb.msg_connect(sync, "frames", dec, "frames")
+        tb.msg_connect(sync, "plan", dec, "plan")
         tb.msg_connect(dec, "feedback", sync, "feedback")
         tb.msg_connect(dec, "bb", tv, "bb")
         tb.msg_connect(dec, "dial", tv, "dial")

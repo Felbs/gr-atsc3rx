@@ -59,6 +59,7 @@ def main():
     sink = atsc3rx.dg_sink(a.out)
     tb.connect(src, sync)
     tb.msg_connect(sync, "frames", dec, "frames")
+    tb.msg_connect(sync, "plan", dec, "plan")
     tb.msg_connect(dec, "bb", alp, "bb")
     tb.msg_connect(dec, "feedback", sync, "feedback")
     tb.msg_connect(alp, "datagrams", sink, "datagrams")
