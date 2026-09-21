@@ -42,7 +42,8 @@ class frame_decoder(gr.basic_block):
                             frame's FEC blocks converged (hybrid), or no interleaver phase (CTI).
     """
 
-    def __init__(self, receiver_dir="", threads=8, iters=50, cpu_fast=True, procs=0, proc_threads=4):
+    def __init__(self, receiver_dir="", threads=8, iters=50, cpu_fast=True, procs=0, proc_threads=4,
+                 rescue=True, rescue_snr_db=12.0):
         gr.basic_block.__init__(self, name="atsc3rx_frame_decoder", in_sig=None, out_sig=None)
         self.rx = _core.load(receiver_dir or None)
         self.threads, self.iters, self.cpu_fast = int(threads), int(iters), bool(cpu_fast)
@@ -53,6 +54,10 @@ class frame_decoder(gr.basic_block):
         self.n_frames = self.n_conv = self.n_bch = self.n_fec = 0
         self._lock = threading.Lock()
         self.t_busy = 0.0
+        self.rescue, self.rescue_snr = bool(rescue), float(rescue_snr_db)
+        self.alt = None                         # second decoder, channel-estimate smoothing OFF (built on first need)
+        self.n_retried = self.n_rescued = 0
+        self._plan = None
         self.n_in = 0                           # frames fully handled (published or not)
         self.message_port_register_in(pmt.intern("frames"))
         self.set_msg_handler(pmt.intern("frames"), self.on_frame)
@@ -72,6 +77,7 @@ class frame_decoder(gr.basic_block):
         else:
             self.dec = rx.m9_fast.FrameDecoder(threads=self.threads, backend="cpu", iters=self.iters,
                                                cpu_fast=self.cpu_fast, plan=plan)
+            self._plan = plan
         self.dec.prewarm()
         self.mode = mode
 
@@ -114,6 +120,7 @@ class frame_decoder(gr.basic_block):
     def _m9(self, meta, w):
         rx = self.rx
         r16, pkts, diag = self.dec.decode_frame(w, int(meta["t0"]))
+        pkts, diag = self._maybe_rescue(w, int(meta["t0"]), pkts, diag)
         stream, bounds = bytearray(), []
         for p in pkts:
             if p is None:
@@ -127,6 +134,29 @@ class frame_decoder(gr.basic_block):
         self._publish(meta, bytes(stream), bounds, conv, diag.get("bch_ok", 0),
                       n_fec, diag.get("snr_db"), diag.get("dummy"))
         return conv < min(60, int(round(0.81 * n_fec))) if n_fec else True
+
+    def _maybe_rescue(self, w, t0, pkts, diag):
+        """A frame that FAILS while its known dummy cells read a healthy SNR is not a fade - the decoder is
+        wrong about something. Measured cause: the reference fast path smooths the channel estimate across
+        carriers (its E60 'ce_w' lever), which helps on a flat channel and destroys the estimate on a long echo:
+        0/74 blocks with smoothing, 74/74 without, from the same samples at 17 dB. So: one retry with smoothing
+        off, keep whichever decoded more. Costs nothing on good frames and nothing in a real fade (low SNR)."""
+        n_fec, conv, snr = int(diag.get("n_fec", 0)), int(diag.get("converged", 0)), diag.get("snr_db")
+        if not (self.rescue and self.cpu_fast and n_fec and conv < min(60, int(round(0.81 * n_fec)))
+                and isinstance(snr, (int, float)) and snr >= self.rescue_snr):
+            return pkts, diag
+        if self.alt is None:
+            self.alt = self.rx.m9_fast.FrameDecoder(threads=self.threads, backend="cpu", iters=self.iters,
+                                                    cpu_fast=True, plan=self._plan, margin={"ce_w": 0})
+            self.alt.prewarm()
+        self.n_retried += 1
+        _, pkts2, diag2 = self.alt.decode_frame(w, t0)
+        if int(diag2.get("converged", 0)) > conv:
+            self.n_rescued += 1
+            diag2 = dict(diag2)
+            diag2["rescued"] = True
+            return pkts2, diag2
+        return pkts, diag
 
     def _ldm(self, meta, w):
         ps = meta.get("ps", -1)
@@ -174,6 +204,8 @@ class frame_decoder(gr.basic_block):
         try:
             if self.mode == "m9" and self.dec is not None:
                 self.dec.close()
+            if self.alt is not None:
+                self.alt.close()
         except Exception:
             pass
         return True

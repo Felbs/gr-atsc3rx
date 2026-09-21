@@ -16,7 +16,9 @@ then be laid at the door of the air (both lost it) or of the code (one lost it).
 
 The IQ file grows ~100 GB an hour and is deleted at the end unless --keep-iq. Nothing in DIR belongs
 in a repository. If the radio is shared, RXTUNE_LOCK (see gr-rxtune) is honoured.
-Afterwards: stress_ab_report.py DIR"""
+Afterwards: stress_ab_report.py DIR. If the run is cut short (it happened: the PC bugchecked at 42 min), the
+shared file survives: run the reference over it offline with --dump-dg/--json as ref_full.* and report with
+--ref ref_full - the comparison is still sample-for-sample."""
 import argparse
 import contextlib
 import json
@@ -69,7 +71,9 @@ def main():
     ap.add_argument("--seconds", type=float, default=3600.0)
     ap.add_argument("--receiver", default=os.environ.get("ATSC3_RECEIVER_DIR", ""))
     ap.add_argument("--reference-python", default=os.environ.get("ATSC3_PYTHON") or sys.executable)
-    ap.add_argument("--head-start", type=float, default=12.0, help="seconds of file before the reference starts")
+    ap.add_argument("--head-start", type=float, default=90.0,
+                    help="seconds of file before the reference starts. 12 s was not enough: after a shared dropout the "
+                         "reference re-acquired, read ahead, met the end of the growing file and took it for the end")
     ap.add_argument("--threads", type=int, default=16)
     ap.add_argument("--procs", type=int, default=4)
     ap.add_argument("--every", type=float, default=10.0)

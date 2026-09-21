@@ -55,6 +55,18 @@ with the reference receiver: `python -m atsc3 watch --capture F --rate 6.912e6 -
 - A Python block must be kept referenced while its flowgraph runs (access violation otherwise).
 - A finite stock source ENDS the flowgraph under message blocks: tests use Capture Source.
 
+## Traps found in sessions 5-6
+- The reference receiver's CPU FAST decoder smooths the channel estimate (E60 `ce_w`); on a long echo that turns
+  74/74 into 0/74 at a healthy SNR. `frame_decoder(rescue=True)` retries such frames with `margin={"ce_w": 0}`.
+  Local repro + notes: runs/fastpath_bug/ (NOT in git). The reference's GPU and exact-CPU paths are unaffected,
+  so an oracle made on a GPU box can legitimately beat this chain until that is fixed upstream.
+- A continuity break must discard the whole queue, or the slow re-acquisition overflows it again, forever.
+- The reference tools read live.json ONCE at launch; start them only when a video lane is listed. If the viewer
+  has to be terminated, close the player recorded in _tv/player.pid or it stays open, paused, on a dead stream.
+- Launch helper processes one at a time at below-normal priority: a burst starves the radio thread.
+- This PC bugchecks under sustained load (several different stop codes this month). Long tests must be detached
+  and must leave their evidence on disk; never assume a run will reach its own clean-up.
+
 ## Next
 1. Gate 2 on the Ubuntu rig: build drmpeg/gr-atsc3, File-Sink its V&V flowgraphs at 6.912 MS/s, decode them.
 2. First C++ stage. The profile says where: the CTI/LDM path is 0.64x here vs 1.8x in the reference, all of

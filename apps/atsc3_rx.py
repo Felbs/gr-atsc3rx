@@ -186,7 +186,8 @@ def main():
     print(f"frames    {sync.n_frames} cut, {dec.n_frames} decoded, {sync.n_dropped} dropped (decoder behind); "
           f"{sync.n_breaks} sample-continuity breaks, {sync.n_reacquire} re-acquisitions")
     pct = 100.0 * dec.n_bch / dec.n_fec if dec.n_fec else 0.0
-    print(f"FEC       {dec.n_conv}/{dec.n_fec} converged, {dec.n_bch} BCH-clean ({pct:.2f}%)")
+    print(f"FEC       {dec.n_conv}/{dec.n_fec} converged, {dec.n_bch} BCH-clean ({pct:.2f}%); "
+          f"{dec.n_rescued} of {dec.n_retried} healthy-SNR failures rescued by a retry without CE smoothing")
     if watch.snr:
         s = sorted(watch.snr)
         print(f"SNR       median {s[len(s) // 2]:.1f} dB  (min {s[0]:.1f}, max {s[-1]:.1f}) off the known dummy cells")

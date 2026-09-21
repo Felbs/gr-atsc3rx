@@ -125,6 +125,11 @@ class FakeFrameDecoder:
         pass
 
     def decode_frame(self, w, t0):
+        # a frame whose first sample is 1000+ is one that ONLY the smoothing-off decoder can read
+        if w[0].real >= 1000:
+            ok = self.kw.get("margin") == {"ce_w": 0}
+            return None, [bytes([0]) + bytes([9] * 7) if ok else None], {
+                "converged": 10 if ok else 0, "bch_ok": 10 if ok else 0, "n_fec": 10, "snr_db": 17.0, "dummy": {"n": 5}}
         good = w[0].real >= 0
         pkt = bytes([0]) + bytes([int(abs(w[0].real)) % 256] * 7) if good else None
         return None, [pkt], {"converged": 10 if good else 0, "bch_ok": 10 if good else 0, "n_fec": 10,

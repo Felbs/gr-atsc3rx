@@ -70,3 +70,17 @@ Not done: gate 2; any C++; Linux build/CI; live CTI/LDM; soaks longer than 75 s;
   Fix: one helper every 4 s, below-normal priority. Run 2 (300 s): clean through launch; one reception event at ~107 s.
 - Verified on the OUTPUT (the viewer's muxed TS), not on proxies: tracks, loudness, silence map, video decode errors.
 - Status line now carries SNR and its minimum since the previous line, so the next dropout can be told from a fade.
+
+## 2026-09-21 — session 6: fixes, same-samples stress test, a bug found upstream of us
+- Start-up: decoder prewarms on the 'plan' message (0 frames shed, was 8-10). That exposed, and the new stress
+  harness caught within 90 s, a continuity-break -> re-acquire -> overflow loop; fixed (discard the stale queue,
+  32-block queue) with a QA assertion.
+- `util/stress_ab.py` / `stress_ab_report.py`: one quantisation, two receivers. 60 min planned; the PC bugchecked
+  at 42 min (its own recurring fault). Shared file survived -> reference re-run offline over all 42 min.
+  Ours 99.360 %, reference 99.683 %, 4 re-acquisitions each, 99.5 % of its datagrams byte-identical.
+- The single ours-only loss: reproduced offline -> reference CPU mode fails there too and worse -> exact and GPU
+  paths clean -> fresh instance fails -> decoder not front end -> margin levers -> `ce_w` (CE smoothing) alone.
+  Frame Decoder now retries healthy-SNR failures with smoothing off: 96.36 % -> 99.98 % on that stretch.
+- `tv_bridge` no longer orphans the viewer's player. Report fixes: crash-zeroed file tails, event matching.
+- Picture-shape question from the owner: checked on the OUTPUT - 1280x720, SAR 1:1, player video area exactly
+  that; the window only looks squarer because of the player's own menu and control bars.

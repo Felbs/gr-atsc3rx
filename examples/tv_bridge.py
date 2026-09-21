@@ -87,6 +87,32 @@ def video_lane_listed(live_dir):
     return any(ln.get("kind") == "video" and os.path.exists(ln.get("path", "")) for ln in lanes.values())
 
 
+def close_orphan_player(live_dir):
+    """The reference viewer records the player IT spawned in _tv/player.pid. If the viewer had to be
+    terminated, that player is left open and paused on a dead stream - and someone presses play on it.
+    Close it, politely, and only if the pid still belongs to the player image that was recorded."""
+    try:
+        with open(os.path.join(live_dir, "_tv", "player.pid")) as fh:
+            rec = json.load(fh)
+        pid, image = int(rec["pid"]), str(rec.get("image", "")).lower()
+    except (OSError, ValueError, KeyError):
+        return
+    if not image:
+        return
+    try:
+        if os.name == "nt":
+            out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+                                 capture_output=True, text=True, timeout=10).stdout.lower()
+            if image in out:
+                subprocess.run(["taskkill", "/PID", str(pid)], capture_output=True, timeout=10)   # WM_CLOSE, no /F
+        else:
+            with open(f"/proc/{pid}/comm") as fh:
+                if fh.read().strip().lower() in image:
+                    os.kill(pid, signal.SIGTERM)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def second_audio_pid(live_dir):
     try:
         with open(os.path.join(live_dir, "live.json")) as fh:
@@ -190,7 +216,7 @@ def main():
                               "--wait", 600, "--out", os.path.join(live_dir, "live_audio_spa.wav"))
                 extra = a.tv_args.split() if a.tv_args else []
                 if a.seconds:
-                    extra += ["--max-seconds", a.seconds + 90]
+                    extra += ["--max-seconds", a.seconds + 45]   # it then closes its own player
                 spawn("tv", "atsc3_tv.py", *extra)
             elif a.play:
                 extra = ["--player-args", a.player_args] if a.player_args else []
@@ -230,9 +256,13 @@ def main():
             helpers[-1].wait(timeout=100.0 if a.tv else max(5.0, a.lag + 5.0))
         except subprocess.TimeoutExpired:
             pass
+    forced = False
     for p in helpers:
         if p.poll() is None:
             p.terminate()
+            forced = True
+    if a.tv and forced:
+        close_orphan_player(live_dir)
     return 0 if tv.n_seg else 1
 
 

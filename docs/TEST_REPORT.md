@@ -42,7 +42,52 @@ verdict the night before. The radio was shared under a site lock (RXTUNE_LOCK) f
 `docs/img/rx_radio_qt_live.png` is the third GRC run's window. Its plan readout is switched off
 (`Show plan = No`): what a real station signals is that station's data, not this project's.
 
-**Not run:** the CTI/LDM path on live air; any radio other than the RSPdx; anything over 75 s.
+**Not run:** the CTI/LDM path on live air; any radio other than the RSPdx. The longest run is the 42-minute stress test below.
+
+## 2b. Same-samples stress test against the reference receiver
+
+`util/stress_ab.py` + `util/stress_ab_report.py`. One radio cannot feed two receivers, and two runs an hour
+apart are two different channels, so GNU Radio owns the radio, quantises ONCE to 16-bit I/Q, and feeds the
+identical sample values to this chain (live) and, through a growing file, to the reference receiver. Each
+dropout is then the air (both lost it) or the code (one did).
+
+The run was set for 60 minutes and ended at **42 min when the PC bugchecked** (an unrelated, recurring fault of
+that machine). The shared sample file survived, so the reference was run over all 42 minutes of it offline:
+the comparison below is still sample for sample. (In the live part the reference also stopped early, at 16 min:
+12 s of head start let it reach the end of the growing file after a re-acquisition. Now 90 s.)
+
+| 42 min, identical samples | this GNU Radio chain (live, CPU) | reference receiver (offline, its default GPU path) |
+|---|---|---|
+| frames decoded | 10193 | 10290 |
+| FEC blocks BCH-clean | 749452 / 754282 (**99.360 %**) | 759043 / 761460 (**99.683 %**) |
+| re-acquisitions | 4 | 4 |
+| sample-continuity breaks | 0 | 0 |
+| whole frames shed, decoder behind | 17 (all in the first seconds) | - |
+| IP datagrams | 880794 | 882920 |
+| datagrams byte-identical in both | 878510 = 99.50 % of the reference's, 99.74 % of ours | |
+
+Loss events over 40 blocks (11 one-minute bins where each side shed a handful of blocks are omitted):
+
+| minute | ours lost | reference lost | verdict |
+|---|---|---|---|
+| 1 | 1760 | 0 | **ours only** - see below |
+| 5 | 1554 | 1184 | the air or the radio: the signal vanished for both (SNR -85 dB) |
+| 16 | 1480 | 814 | the same again (SNR -72 dB) |
+
+After minute 17 this chain ran 25 minutes with single-digit block losses. On the two shared dropouts it lost
+more than the reference (about 5-9 frames longer to be decoding again).
+
+**The "ours only" event was run to ground, and it is not in this project.** It reproduces offline from the same
+samples; the reference receiver's own CPU mode fails at the same place and far worse (79.5 % and 14
+re-acquisitions over 150 s, against this chain's 96.4 % and 1); its exact float64 CPU path and its GPU path are
+clean. A fresh decoder instance fails identically, so it is not state; the front end is innocent. Switching the
+reference's margin levers one at a time pins it to a single one: **smoothing the channel estimate across
+carriers**. With smoothing, 0 of 74 blocks converge on frames whose known dummy cells are perfect at 17 dB;
+without it, 74 of 74 - the signature of a long echo, which smoothing averages away. The Frame Decoder now
+retries a frame that fails at a healthy SNR once with smoothing off and keeps the better result: on that
+150 s stretch **96.36 % -> 99.98 %, 108 of 108 frames rescued, 0 re-acquisitions**; nothing is retried in a real
+fade (low SNR), and both bit-exact gates still pass. A four-frame reproduction went to the reference receiver's
+author. This supersedes the guess in section 2 that the first 5.4 s audio dropout was a fade: it was probably this.
 
 ## 3. Datagrams really leave the process
 
@@ -54,7 +99,7 @@ but do not use the UDP path as an acceptance test - that is what the datagram fi
 
 ## 4. QA (no receiver, no capture, no radio)
 
-`python/atsc3rx/qa_*.py`, 21 tests, all pass. They use `qa_common.fake_receiver()`, a stand-in for
+`python/atsc3rx/qa_*.py`, 22 tests, all pass. They use `qa_common.fake_receiver()`, a stand-in for
 the reference receiver, so that what these blocks ADD is tested on its own:
 
 | File | Tests | What is proven |
@@ -82,6 +127,9 @@ grcc compiles both example flowgraphs. **No CI yet** (no Linux build has been do
 11. GRC enum parameter given an expression fell back to its default, so `Show plan = No` did nothing in the generated flowgraph. Now a bool. Caught by looking at the screenshot.
 13. The reference player reads the lane list once, at launch, and live.json lists audio lanes before video: the bridge started it too early twice. It now waits for a video lane that exists on disk.
 14. Starting the viewer stack (3 Python tools, ffmpeg, a player) in one second starved the radio thread: a re-acquisition. Staggered, below-normal priority.
+15. The start-up "fix" of prewarming the decoder on the plan pushed the front end past its queue, and exposed a loop: a continuity break forces a re-acquisition, which is slow, which overflows the queue again - four breaks a second, forever (369 in 90 s while the reference decoded everything). A break now discards the whole stale queue, and the queue is deeper. Found by the stress harness in its first 90 seconds.
+16. 8-10 whole frames were shed at every start while the decoder built its tables. It now builds them when the plan arrives: 0 shed.
+17. `tv_bridge` terminated the viewer before the viewer could close its own player, leaving a paused player on a dead stream (somebody pressed play on it). The bridge now lets the viewer finish, and closes the recorded player if it had to terminate.
 12. (test harness) A Python block that goes out of scope while its flowgraph runs is an access violation: `connect()` holds only the C++ half. And a finite stock source ends the flowgraph under message blocks that still have frames in flight - the reason Capture Source exists.
 
 ## 6. Not done

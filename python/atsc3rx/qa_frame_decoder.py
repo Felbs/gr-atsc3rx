@@ -66,6 +66,21 @@ class qa_frame_decoder(gr_unittest.TestCase):
         tb.wait()
         self.assertEqual(dec.n_bch, 10)
 
+    def test_004_a_frame_that_fails_at_a_healthy_snr_is_retried_without_smoothing(self):
+        root, _ = fake_receiver()
+        tb, dec, out = self._graph(root, "bb", "feedback")
+        tb.start()
+        for i, first in enumerate((1000.0, -1.0)):            # healthy-SNR failure (rescuable); a real fade (SNR -30)
+            w = np.full(FRAME, first, np.complex128)
+            meta = {"index": i, "t0": 0, "mode": "m9", "plan": "", "acq": 0, "win": _core.park_window(w)}
+            post(dec, "frames", pmt.cons(pmt.to_pmt(meta), pmt.make_c64vector(0, 0j)))
+        time.sleep(1.0)
+        tb.stop()
+        tb.wait()
+        self.assertEqual((dec.n_retried, dec.n_rescued), (1, 1))      # the fade was NOT retried: low SNR is the air
+        self.assertEqual(dec.n_bch, 10)
+        self.assertEqual([pmt.to_python(m)["weak"] for m in out.got["feedback"]], [False, True])
+
     def test_003_a_by_reference_frame_nobody_parked_is_counted_not_crashed_on(self):
         root, _ = fake_receiver()
         tb, dec, out = self._graph(root, "bb")

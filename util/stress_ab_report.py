@@ -28,7 +28,7 @@ def dg_hashes(path):
     with open(path, "rb") as fh:
         while True:
             head = fh.read(REC.size)
-            if len(head) < REC.size:
+            if len(head) < REC.size or not any(head):      # a crash leaves a zero-filled tail: not datagrams
                 break
             ln = REC.unpack(head)[4]
             body = fh.read(ln)
@@ -44,6 +44,7 @@ def main():
     ap.add_argument("dir")
     ap.add_argument("--md")
     ap.add_argument("--bin", type=float, default=60.0, help="timeline bin, seconds")
+    ap.add_argument("--ref", default="ref", help="file prefix of the reference run (ref, or ref_full for an offline re-run)")
     a = ap.parse_args()
     d = a.dir
     out = []
@@ -54,7 +55,7 @@ def main():
 
     done = json.load(open(os.path.join(d, "done.json")))
     ours = [json.loads(x) for x in open(os.path.join(d, "ours.jsonl")) if x.strip()]
-    ref = json.load(open(os.path.join(d, "ref.json"))) if os.path.exists(os.path.join(d, "ref.json")) else {}
+    ref = json.load(open(os.path.join(d, a.ref + ".json"))) if os.path.exists(os.path.join(d, a.ref + ".json")) else {}
     o = done["ours"]
     say(f"run: {done['wall_s']:.0f} s wall ({done['why']}); {done['iq_bytes'] / 1e9:.1f} GB of shared 16-bit I/Q")
     say()
@@ -71,7 +72,7 @@ def main():
     say(f"| whole frames shed (decoder behind) | {o['frames_dropped']} | see its log |")
 
     # datagrams
-    po, pr = os.path.join(d, "ours.dg"), os.path.join(d, "ref.dg")
+    po, pr = os.path.join(d, "ours.dg"), os.path.join(d, a.ref + ".dg")
     if os.path.exists(po) and os.path.exists(pr):
         co, no = dg_hashes(po)
         cr, nr = dg_hashes(pr)
@@ -92,13 +93,14 @@ def main():
         say()
         say(f"SNR off the dummy cells (ours): median {s[len(s) // 2]:.1f} dB, 5th percentile {s[len(s) // 20]:.1f}, "
             f"min {s[0]:.1f}, max {s[-1]:.1f}")
+    frame_sec = (ref.get('air_s', 0) / ref['frames']) if ref.get('frames') else 0.2471
     refpts = []
-    path = os.path.join(d, "ref.log")
+    path = os.path.join(d, a.ref + ".log")
     if os.path.exists(path):
         for line in open(path, errors="replace"):
             m = REF_LINE.match(line)
             if m:
-                refpts.append((float(m.group(4)), int(m.group(6)), int(m.group(7))))
+                refpts.append((int(m.group(5)) * frame_sec, int(m.group(6)), int(m.group(7))))
     say()
     say(f"loss timeline, {a.bin:.0f} s bins (FEC blocks that did NOT come out clean); quiet bins omitted")
     say()
@@ -130,26 +132,33 @@ def main():
         if isinstance(v, (int, float)):
             k = int(x["t"] // a.bin)
             bsn[k] = min(bsn.get(k, 99.0), v)
-    both = ours_only = ref_only = 0
+    both = ours_only = ref_only = small = 0
+    SMALL = 40                       # under half a frame of blocks: both receivers shed a few at the cliff all hour
     for k in sorted(set(bo) | set(br)):
-        lo, lr = bo.get(k, 0), br.get(k, 0) + br.get(k - 1, 0) * 0      # same bin; the lag is << bin
+        lo = bo.get(k, 0)
+        lr = br.get(k, 0)
+        lr_near = sum(br.get(j, 0) for j in (k - 1, k, k + 1))     # the reference's clock is frames, ours is wall
+        lo_near = sum(bo.get(j, 0) for j in (k - 1, k, k + 1))
         if lo == 0 and lr == 0:
             continue
-        near_r = lr or br.get(k - 1, 0) or br.get(k + 1, 0)
-        near_o = lo or bo.get(k - 1, 0) or bo.get(k + 1, 0)
-        if lo and near_r:
+        if max(lo, lr) < SMALL:
+            small += 1
+            continue
+        if lo >= SMALL and lr_near >= 0.25 * lo:
             v = "the air (both)"
             both += 1
-        elif lo:
+        elif lo >= SMALL:
             v = "**ours only**"
             ours_only += 1
-        elif near_o:
-            continue
+        elif lo_near >= 0.25 * lr:
+            continue                 # the neighbouring bin already reported it
         else:
             v = "reference only"
             ref_only += 1
         sn = bsn.get(k)
         say(f"| {k * a.bin / 60:.0f} | {lo} | {bra.get(k, 0)} | {'' if sn is None else f'{sn:.1f} dB'} | {lr} | {v} |")
+    say()
+    say(f"({small} more bins where neither side lost as many as {SMALL} blocks are omitted)")
     say()
     say(f"events: {both} shared with the reference (the air), {ours_only} ours only, {ref_only} reference only")
     if a.md:
